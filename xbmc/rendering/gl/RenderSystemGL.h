@@ -23,6 +23,8 @@
 
 #pragma once
 
+#if defined(HAVE_GL)
+
 #include "system.h"
 #include "system_gl.h"
 #include "rendering/RenderSystem.h"
@@ -93,5 +95,7 @@ protected:
   GLdouble   m_projection[16];
   GLint      m_viewPort[4];
 };
+
+#endif
 
 #endif // RENDER_SYSTEM_H
