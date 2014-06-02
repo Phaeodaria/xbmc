@@ -29,6 +29,7 @@
 #include "ApplicationMessenger.h"
 #include <X11/Xlib.h>
 #include "X11/WinSystemX11GL.h"
+#include "X11/WinSystemX11GLES.h"
 #include "X11/keysymdef.h"
 #include "X11/XF86keysym.h"
 #include "utils/log.h"
@@ -215,7 +216,6 @@ bool CWinEventsX11Imp::Init(Display *dpy, Window win)
   char *old_locale = NULL, *old_modifiers = NULL;
   char res_name[8];
   const char *p;
-  size_t n;
 
   // set resource name to xbmc, not used
   strcpy(res_name, "xbmc");
