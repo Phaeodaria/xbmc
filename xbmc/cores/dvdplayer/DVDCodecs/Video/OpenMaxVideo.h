@@ -24,6 +24,8 @@
 #include "OpenMax.h"
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
 
 // an omx egl video frame
 typedef struct OpenMaxVideoBuffer {
@@ -35,6 +37,9 @@ typedef struct OpenMaxVideoBuffer {
   // used for egl based rendering if active
   EGLImageKHR egl_image;
   GLuint texture_id;
+
+  COpenMaxVideo *openMaxVideo;
+  bool done;
 } OpenMaxVideoBuffer;
 
 class COpenMaxVideo : public COpenMax
@@ -49,8 +54,12 @@ public:
   int  Decode(uint8_t *pData, int iSize, double dts, double pts);
   void Reset(void);
   bool GetPicture(DVDVideoPicture *pDvdVideoPicture);
+  bool ClearPicture(DVDVideoPicture *pDvdVideoPicture);
+  void Release(OpenMaxVideoBuffer *buffer);
   void SetDropState(bool bDrop);
 protected:
+  int EnqueueDemuxPacket(omx_demux_packet demux_packet);
+
   void QueryCodec(void);
   OMX_ERRORTYPE PrimeFillBuffers(void);
   OMX_ERRORTYPE AllocOMXInputBuffers(void);

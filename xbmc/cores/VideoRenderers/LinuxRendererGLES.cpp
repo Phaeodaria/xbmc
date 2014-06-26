@@ -803,6 +803,12 @@ void CLinuxRendererGLES::LoadShaders(int field)
     m_textureCreate = &CLinuxRendererGLES::CreateNV12Texture;
     m_textureDelete = &CLinuxRendererGLES::DeleteNV12Texture;
   }
+  else if (m_format == RENDER_FMT_OMXEGL)
+  {
+    m_textureUpload = &CLinuxRendererGLES::UploadBYPASSTexture;
+    m_textureCreate = &CLinuxRendererGLES::CreateBYPASSTexture;
+    m_textureDelete = &CLinuxRendererGLES::DeleteBYPASSTexture;
+  }
   else
   {
     // default to YV12 texture handlers
@@ -1321,6 +1327,12 @@ void CLinuxRendererGLES::RenderOpenMax(int index, int field)
 #if defined(HAVE_LIBOPENMAX)
   GLuint textureId = m_buffers[index].openMaxBuffer->texture_id;
 
+  OpenMaxVideoBuffer *buffer = m_buffers[index].openMaxBuffer;
+  if (buffer) {
+    glFinish();
+    buffer->openMaxVideo->Release(buffer);
+  }
+
   glDisable(GL_DEPTH_TEST);
 
   // Y
@@ -1358,9 +1370,9 @@ void CLinuxRendererGLES::RenderOpenMax(int index, int field)
 
   // Set texture coordinates
   tex[0][0] = tex[3][0] = 0;
-  tex[0][1] = tex[1][1] = 0;
+  tex[0][1] = tex[1][1] = 1;
   tex[1][0] = tex[2][0] = 1;
-  tex[2][1] = tex[3][1] = 1;
+  tex[2][1] = tex[3][1] = 0;
 
   glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_BYTE, idx);
 
