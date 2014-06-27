@@ -65,6 +65,11 @@
 // EGL extension functions
 static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
 static PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR;
+
+static PFNEGLCREATESYNCKHRPROC eglCreateSyncKHR;
+static PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHR;
+static PFNEGLCLIENTWAITSYNCKHRPROC eglClientWaitSyncKHR;
+
 #define GETEXTENSION(type, ext) \
 do \
 { \
@@ -419,6 +424,12 @@ void COpenMaxVideo::Release(OpenMaxVideoBuffer* releaseBuffer)
       bool done = buffer->omx_buffer->nFlags & OMX_BUFFERFLAG_EOS;
       if (!done)
       {
+
+        if (buffer->eglSync) {
+          eglClientWaitSyncKHR(eglGetCurrentDisplay(), buffer->eglSync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 1*1000*1000*1000);
+          eglDestroySyncKHR(eglGetCurrentDisplay(), buffer->eglSync);
+	  buffer->eglSync = 0;
+        }
 	// return the omx buffer back to OpenMax to fill.
 	
 	OMX_ERRORTYPE omx_err = OMX_FillThisBuffer(m_omx_decoder, buffer->omx_buffer);
@@ -716,6 +727,9 @@ OMX_ERRORTYPE COpenMaxVideo::AllocOMXOutputEGLTextures(void)
   if (!eglCreateImageKHR)
   {
     GETEXTENSION(PFNEGLCREATEIMAGEKHRPROC,  eglCreateImageKHR);
+    GETEXTENSION(PFNEGLCREATESYNCKHRPROC, eglCreateSyncKHR);
+    GETEXTENSION(PFNEGLDESTROYSYNCKHRPROC, eglDestroySyncKHR);
+    GETEXTENSION(PFNEGLCLIENTWAITSYNCKHRPROC, eglClientWaitSyncKHR);
   }
 
   EGLint attrib = EGL_NONE;

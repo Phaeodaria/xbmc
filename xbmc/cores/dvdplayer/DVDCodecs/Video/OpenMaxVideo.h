@@ -38,6 +38,8 @@ typedef struct OpenMaxVideoBuffer {
   EGLImageKHR egl_image;
   GLuint texture_id;
 
+  EGLSyncKHR eglSync;
+
   COpenMaxVideo *openMaxVideo;
   bool done;
 } OpenMaxVideoBuffer;

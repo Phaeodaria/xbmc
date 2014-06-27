@@ -77,7 +77,12 @@ extern "C" {
 static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
 static PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR;
 static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
+
 #endif
+
+static PFNEGLCREATESYNCKHRPROC eglCreateSyncKHR;
+static PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHR;
+static PFNEGLCLIENTWAITSYNCKHRPROC eglClientWaitSyncKHR;
 
 #if defined(TARGET_ANDROID)
 #include "DVDCodecs/Video/DVDVideoCodecAndroidMediaCodec.h"
@@ -153,6 +158,9 @@ CLinuxRendererGLES::CLinuxRendererGLES()
   if (!glEGLImageTargetTexture2DOES)
     glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC) CEGLWrapper::GetProcAddress("glEGLImageTargetTexture2DOES");
 #endif
+  eglCreateSyncKHR = (PFNEGLCREATESYNCKHRPROC) eglGetProcAddress("eglCreateSyncKHR");
+  eglDestroySyncKHR = (PFNEGLDESTROYSYNCKHRPROC) eglGetProcAddress("eglDestroySyncKHR");
+  eglClientWaitSyncKHR = (PFNEGLCLIENTWAITSYNCKHRPROC) eglGetProcAddress("eglClientWaitSyncKHR");
 }
 
 CLinuxRendererGLES::~CLinuxRendererGLES()
@@ -1328,10 +1336,6 @@ void CLinuxRendererGLES::RenderOpenMax(int index, int field)
   GLuint textureId = m_buffers[index].openMaxBuffer->texture_id;
 
   OpenMaxVideoBuffer *buffer = m_buffers[index].openMaxBuffer;
-  if (buffer) {
-    glFinish();
-    buffer->openMaxVideo->Release(buffer);
-  }
 
   glDisable(GL_DEPTH_TEST);
 
@@ -1386,6 +1390,12 @@ void CLinuxRendererGLES::RenderOpenMax(int index, int field)
 
   glDisable(m_textureTarget);
   VerifyGLState();
+
+  if (buffer) {
+    buffer->eglSync = eglCreateSyncKHR(eglGetCurrentDisplay(), EGL_SYNC_FENCE_KHR, NULL);
+    buffer->openMaxVideo->Release(buffer);
+  }
+
 #endif
 }
 
