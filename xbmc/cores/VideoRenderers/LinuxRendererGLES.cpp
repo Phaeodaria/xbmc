@@ -1333,9 +1333,16 @@ void CLinuxRendererGLES::RenderSoftware(int index, int field)
 void CLinuxRendererGLES::RenderOpenMax(int index, int field)
 {
 #if defined(HAVE_LIBOPENMAX)
-  GLuint textureId = m_buffers[index].openMaxBuffer->texture_id;
-
   OpenMaxVideoBuffer *buffer = m_buffers[index].openMaxBuffer;
+  if (!buffer)
+    return;
+  if (!buffer->openMaxVideo) {
+    m_buffers[index].openMaxBuffer = 0;
+    delete buffer;
+    return;
+  }
+
+  GLuint textureId = m_buffers[index].openMaxBuffer->texture_id;
 
   glDisable(GL_DEPTH_TEST);
 
@@ -1394,6 +1401,7 @@ void CLinuxRendererGLES::RenderOpenMax(int index, int field)
   if (buffer) {
     buffer->eglSync = eglCreateSyncKHR(eglGetCurrentDisplay(), EGL_SYNC_FENCE_KHR, NULL);
     buffer->openMaxVideo->Release(buffer);
+    glFlush();
   }
 
 #endif

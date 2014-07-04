@@ -55,7 +55,7 @@ public:
   void Close(void);
   int  Decode(uint8_t *pData, int iSize, double dts, double pts);
   void Reset(void);
-  bool GetPicture(DVDVideoPicture *pDvdVideoPicture);
+  int GetPicture(DVDVideoPicture *pDvdVideoPicture);
   bool ClearPicture(DVDVideoPicture *pDvdVideoPicture);
   void Release(OpenMaxVideoBuffer *buffer);
   void SetDropState(bool bDrop);
@@ -98,8 +98,11 @@ protected:
   std::queue<double> m_dts_queue;
   std::queue<omx_demux_packet> m_demux_queue;
 
+  // Synchronization
+  pthread_mutex_t   m_omx_queue_mutex;
+  pthread_cond_t    m_omx_queue_available;
+  
   // OpenMax input buffers (demuxer packets)
-  pthread_mutex_t   m_omx_input_mutex;
   std::queue<OMX_BUFFERHEADERTYPE*> m_omx_input_avaliable;
   std::vector<OMX_BUFFERHEADERTYPE*> m_omx_input_buffers;
   bool              m_omx_input_eos;
@@ -108,7 +111,6 @@ protected:
   CEvent            m_input_consumed_event;
 
   // OpenMax output buffers (video frames)
-  pthread_mutex_t   m_omx_output_mutex;
   std::queue<OpenMaxVideoBuffer*> m_omx_output_busy;
   std::queue<OpenMaxVideoBuffer*> m_omx_output_ready;
   std::vector<OpenMaxVideoBuffer*> m_omx_output_buffers;
