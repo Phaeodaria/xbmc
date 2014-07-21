@@ -1336,11 +1336,6 @@ void CLinuxRendererGLES::RenderOpenMax(int index, int field)
   OpenMaxVideoBuffer *buffer = m_buffers[index].openMaxBuffer;
   if (!buffer)
     return;
-  if (!buffer->openMaxVideo) {
-    m_buffers[index].openMaxBuffer = 0;
-    delete buffer;
-    return;
-  }
 
   GLuint textureId = m_buffers[index].openMaxBuffer->texture_id;
 
@@ -1400,7 +1395,7 @@ void CLinuxRendererGLES::RenderOpenMax(int index, int field)
 
   if (buffer) {
     buffer->eglSync = eglCreateSyncKHR(eglGetCurrentDisplay(), EGL_SYNC_FENCE_KHR, NULL);
-    buffer->openMaxVideo->Release(buffer);
+    buffer->Release();
     glFlush();
   }
 

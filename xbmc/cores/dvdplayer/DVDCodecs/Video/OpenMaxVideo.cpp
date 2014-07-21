@@ -88,16 +88,14 @@ do \
   (a).nVersion.s.nRevision = OMX_VERSION_REVISION; \
   (a).nVersion.s.nStep = OMX_VERSION_STEP
 
+pthread_mutex_t   m_omx_queue_mutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
 
 COpenMaxVideo::COpenMaxVideo()
 {
   m_portChanging = false;
 
-  pthread_mutex_init(&m_omx_queue_mutex, NULL); 
   pthread_cond_init(&m_omx_queue_available, NULL);
 
-  //m_omx_decoder_state_change = (sem_t*)malloc(sizeof(sem_t));
-  //sem_init(&m_omx_decoder_state_change, 0, 0);
   memset(&m_videobuffer, 0, sizeof(DVDVideoPicture));
   m_drop_state = false;
   m_decoded_width = 0;
@@ -116,9 +114,6 @@ COpenMaxVideo::~COpenMaxVideo()
   #endif
   if (m_is_open)
     Close();
-  pthread_mutex_destroy(&m_omx_queue_mutex);
-  //sem_destroy(&m_omx_decoder_state_change);
-  //free(m_omx_decoder_state_change);
 }
 
 bool COpenMaxVideo::Open(CDVDStreamInfo &hints)
@@ -282,6 +277,10 @@ void COpenMaxVideo::SetDropState(bool bDrop)
         CLog::Log(LOGERROR, "%s::%s - OMX_FillThisBuffer, omx_err(0x%x)\n",
           CLASSNAME, __func__, omx_err);
     }
+
+    // And ingore all queued elements
+    ReleaseDemuxQueue();
+
     pthread_mutex_unlock(&m_omx_queue_mutex);
 
     #if defined(OMX_DEBUG_VERBOSE)
@@ -378,7 +377,7 @@ int COpenMaxVideo::Decode(uint8_t* pData, int iSize, double dts, double pts)
     // Sleep for some time until either an image has been decoded or there's space in the input buffer again 
     struct timespec timeout;
     clock_gettime(CLOCK_REALTIME, &timeout);
-    timeout.tv_nsec += 10000000; // 10ms, 1ms still shows the stuttering
+    timeout.tv_nsec += 100000000; // 100ms, 1ms still shows the stuttering
     if (timeout.tv_nsec >= 1000000000) {
       timeout.tv_sec += 1;
       timeout.tv_nsec -=  1000000000;
@@ -544,7 +543,7 @@ OMX_ERRORTYPE COpenMaxVideo::DecoderEmptyBufferDone(
   #endif
 
   // queue free input buffer to avaliable list.
-  pthread_mutex_lock(&ctx->m_omx_queue_mutex);
+  pthread_mutex_lock(&m_omx_queue_mutex);
   ctx->m_omx_input_avaliable.push(pBuffer);
   if(!ctx->m_omx_input_avaliable.empty()) {
     if (!ctx->m_demux_queue.empty()) {
@@ -557,7 +556,7 @@ OMX_ERRORTYPE COpenMaxVideo::DecoderEmptyBufferDone(
     }
   }
 
-  pthread_mutex_unlock(&ctx->m_omx_queue_mutex);
+  pthread_mutex_unlock(&m_omx_queue_mutex);
 
   return OMX_ErrorNone;
 }
@@ -579,10 +578,10 @@ OMX_ERRORTYPE COpenMaxVideo::DecoderFillBufferDone(
   if (!ctx->m_portChanging)
   {
     // queue output omx buffer to ready list.
-    pthread_mutex_lock(&ctx->m_omx_queue_mutex);
+    pthread_mutex_lock(&m_omx_queue_mutex);
     ctx->m_omx_output_ready.push(buffer);
     pthread_cond_signal(&m_omx_queue_available);
-    pthread_mutex_unlock(&ctx->m_omx_queue_mutex);
+    pthread_mutex_unlock(&m_omx_queue_mutex);
   }
 
   return OMX_ErrorNone;
@@ -1217,6 +1216,16 @@ OMX_ERRORTYPE COpenMaxVideo::StopDecoder(void)
 {
   OMX_ERRORTYPE omx_err;
 
+  pthread_mutex_lock(&m_omx_queue_mutex);
+  // remove OpemMaxVideo from all output buffers
+  for (size_t i = 0; i < m_omx_output_buffers.size(); i++)
+  {
+    OpenMaxVideoBuffer* egl_buffer = m_omx_output_buffers[i];
+    egl_buffer->openMaxVideo = 0;
+  }
+  pthread_mutex_unlock(&m_omx_queue_mutex);
+
+
   #if defined(OMX_DEBUG_VERBOSE)
   CLog::Log(LOGDEBUG, "%s::%s\n", CLASSNAME, __func__);
   #endif
@@ -1226,7 +1235,7 @@ OMX_ERRORTYPE COpenMaxVideo::StopDecoder(void)
   {
     CLog::Log(LOGERROR, "%s::%s - setting OMX_StateIdle failed with omx_err(0x%x)\n",
       CLASSNAME, __func__, omx_err);
-    return omx_err;
+    //return omx_err;
   }
 
   // we can free our allocated port buffers in OMX_StateIdle state.
@@ -1234,6 +1243,8 @@ OMX_ERRORTYPE COpenMaxVideo::StopDecoder(void)
   FreeOMXInputBuffers(true);
   // free OpenMax output buffers.
   FreeOMXOutputBuffers(true);
+  // free all queues demux packets
+  ReleaseDemuxQueue();
 
   // transition decoder component from idle to loaded
   omx_err = SetStateForComponent(OMX_StateLoaded);
@@ -1242,6 +1253,24 @@ OMX_ERRORTYPE COpenMaxVideo::StopDecoder(void)
       "%s::%s - setting OMX_StateLoaded failed with omx_err(0x%x)\n",
       CLASSNAME, __func__, omx_err);
 
+
+
   return omx_err;
 }
 
+void COpenMaxVideo::ReleaseDemuxQueue(void)
+{
+  while(!m_demux_queue.empty()) {
+    delete[] m_demux_queue.front().buff;
+    m_demux_queue.pop();
+  }
+}
+
+void OpenMaxVideoBuffer::Release()
+{
+  pthread_mutex_lock(&m_omx_queue_mutex);
+  if (openMaxVideo) {
+    openMaxVideo->Release(this);
+  }
+  pthread_mutex_unlock(&m_omx_queue_mutex);
+}

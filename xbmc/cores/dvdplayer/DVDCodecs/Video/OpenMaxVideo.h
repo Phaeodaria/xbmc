@@ -40,8 +40,13 @@ typedef struct OpenMaxVideoBuffer {
 
   EGLSyncKHR eglSync;
 
-  COpenMaxVideo *openMaxVideo;
   bool done;
+  void Release();
+  void SetOpenMaxVideo(COpenMaxVideo *openMaxVideo);
+
+  //private:
+  COpenMaxVideo *openMaxVideo;
+
 } OpenMaxVideoBuffer;
 
 class COpenMaxVideo : public COpenMax
@@ -77,6 +82,8 @@ protected:
   OMX_ERRORTYPE StartDecoder(void);
   OMX_ERRORTYPE StopDecoder(void);
 
+  void ReleaseDemuxQueue();
+
   // OpenMax decoder callback routines.
   virtual OMX_ERRORTYPE DecoderEventHandler(OMX_HANDLETYPE hComponent, OMX_PTR pAppData,
     OMX_EVENTTYPE eEvent, OMX_U32 nData1, OMX_U32 nData2, OMX_PTR pEventData);
@@ -99,7 +106,7 @@ protected:
   std::queue<omx_demux_packet> m_demux_queue;
 
   // Synchronization
-  pthread_mutex_t   m_omx_queue_mutex;
+  //pthread_mutex_t   m_omx_queue_mutex;
   pthread_cond_t    m_omx_queue_available;
   
   // OpenMax input buffers (demuxer packets)
