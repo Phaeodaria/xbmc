@@ -48,7 +48,7 @@ namespace VAAPI { struct CHolder; }
 namespace VDPAU { class CVdpauRenderPicture; }
 class COpenMax;
 class COpenMaxVideo;
-struct OpenMaxVideoBuffer;
+struct OpenMaxVideoBufferHolder;
 class CDVDVideoCodecStageFright;
 class CDVDMediaCodecInfo;
 typedef void* EGLImageKHR;
@@ -78,7 +78,7 @@ struct DVDVideoPicture
 
     struct {
       COpenMax *openMax;
-      OpenMaxVideoBuffer *openMaxBuffer;
+      OpenMaxVideoBufferHolder *openMaxBufferHolder;
     };
 
     struct {

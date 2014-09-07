@@ -122,7 +122,7 @@ void CDVDVideoCodecOpenMax::Dispose()
   if (m_omx_decoder)
   {
     m_omx_decoder->Close();
-    delete m_omx_decoder;
+    m_omx_decoder->Release();
     m_omx_decoder = NULL;
   }
   if (m_videobuffer.iFlags & DVP_FLAG_ALLOCATED)

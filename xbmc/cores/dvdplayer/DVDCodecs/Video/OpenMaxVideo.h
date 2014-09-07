@@ -26,9 +26,36 @@
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
+#include <DVDResource.h>
+
+template<typename T> struct IDVDResourceCounted2
+{
+  IDVDResourceCounted2() : m_refs(1) {}
+  virtual ~IDVDResourceCounted2() {}
+  virtual T*   Acquire()
+  {
+    printf("Acquire %p %d\n", this, m_refs);
+    ++m_refs;
+    return (T*)this;
+  }
+
+  virtual long Release()
+  {
+    printf("Release %p %d\n", this, m_refs);
+    --m_refs;
+    assert(m_refs >= 0);
+    if (m_refs == 0) delete (T*)this;
+    return m_refs;
+  }
+  int m_refs;
+};
+
 
 // an omx egl video frame
-typedef struct OpenMaxVideoBuffer {
+struct OpenMaxVideoBuffer : public IDVDResourceCounted<OpenMaxVideoBuffer> {
+  OpenMaxVideoBuffer();
+  virtual ~OpenMaxVideoBuffer();
+
   OMX_BUFFERHEADERTYPE *omx_buffer;
   int width;
   int height;
@@ -41,15 +68,23 @@ typedef struct OpenMaxVideoBuffer {
   EGLSyncKHR eglSync;
 
   bool done;
-  void Release();
+  void PassBackToRenderer();
+  void ReleaseTexture();
   void SetOpenMaxVideo(COpenMaxVideo *openMaxVideo);
 
-  //private:
-  COpenMaxVideo *openMaxVideo;
+private:
+  COpenMaxVideo *m_openMaxVideo;
+};
 
-} OpenMaxVideoBuffer;
+class OpenMaxVideoBufferHolder : public IDVDResourceCounted<OpenMaxVideoBufferHolder> {
+public:
+  OpenMaxVideoBufferHolder(OpenMaxVideoBuffer *openMaxVideoBuffer);
+  virtual ~OpenMaxVideoBufferHolder();
 
-class COpenMaxVideo : public COpenMax
+  OpenMaxVideoBuffer *m_openMaxVideoBuffer;
+};
+
+class COpenMaxVideo : public COpenMax, public IDVDResourceCounted<COpenMaxVideo>
 {
 public:
   COpenMaxVideo();
@@ -62,7 +97,7 @@ public:
   void Reset(void);
   int GetPicture(DVDVideoPicture *pDvdVideoPicture);
   bool ClearPicture(DVDVideoPicture *pDvdVideoPicture);
-  void Release(OpenMaxVideoBuffer *buffer);
+  void ReleaseBuffer(OpenMaxVideoBuffer *buffer);
   void SetDropState(bool bDrop);
 protected:
   int EnqueueDemuxPacket(omx_demux_packet demux_packet);

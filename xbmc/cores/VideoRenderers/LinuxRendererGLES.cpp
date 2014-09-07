@@ -96,7 +96,7 @@ CLinuxRendererGLES::YUVBUFFER::YUVBUFFER()
   memset(&image , 0, sizeof(image));
   flipindex = 0;
 #ifdef HAVE_LIBOPENMAX
-  openMaxBuffer = NULL;
+  openMaxBufferHolder = NULL;
 #endif
 #ifdef HAVE_VIDEOTOOLBOXDECODER
   cvBufferRef = NULL;
@@ -813,9 +813,9 @@ void CLinuxRendererGLES::LoadShaders(int field)
   }
   else if (m_format == RENDER_FMT_OMXEGL)
   {
-    m_textureUpload = &CLinuxRendererGLES::UploadBYPASSTexture;
-    m_textureCreate = &CLinuxRendererGLES::CreateBYPASSTexture;
-    m_textureDelete = &CLinuxRendererGLES::DeleteBYPASSTexture;
+    m_textureUpload = &CLinuxRendererGLES::UploadOpenMaxTexture;
+    m_textureCreate = &CLinuxRendererGLES::CreateOpenMaxTexture;
+    m_textureDelete = &CLinuxRendererGLES::DeleteOpenMaxTexture;
   }
   else
   {
@@ -1333,11 +1333,12 @@ void CLinuxRendererGLES::RenderSoftware(int index, int field)
 void CLinuxRendererGLES::RenderOpenMax(int index, int field)
 {
 #if defined(HAVE_LIBOPENMAX)
-  OpenMaxVideoBuffer *buffer = m_buffers[index].openMaxBuffer;
-  if (!buffer)
+  OpenMaxVideoBufferHolder *bufferHolder = m_buffers[index].openMaxBufferHolder;
+  if (!bufferHolder)
     return;
+  OpenMaxVideoBuffer *buffer = bufferHolder->m_openMaxVideoBuffer;
 
-  GLuint textureId = m_buffers[index].openMaxBuffer->texture_id;
+  GLuint textureId = buffer->texture_id;
 
   glDisable(GL_DEPTH_TEST);
 
@@ -1395,7 +1396,6 @@ void CLinuxRendererGLES::RenderOpenMax(int index, int field)
 
   if (buffer) {
     buffer->eglSync = eglCreateSyncKHR(eglGetCurrentDisplay(), EGL_SYNC_FENCE_KHR, NULL);
-    buffer->Release();
     glFlush();
   }
 
@@ -1680,7 +1680,7 @@ void CLinuxRendererGLES::UploadYV12Texture(int source)
 
 
 #if defined(HAVE_LIBOPENMAX)
-  if (!(im->flags&IMAGE_FLAG_READY) || m_buffers[source].openMaxBuffer)
+  if (!(im->flags&IMAGE_FLAG_READY) || m_buffers[source].openMaxBufferHolder)
 #else
   if (!(im->flags&IMAGE_FLAG_READY))
 #endif
@@ -1713,9 +1713,9 @@ void CLinuxRendererGLES::UploadYV12Texture(int source)
         SWS_FAST_BILINEAR, NULL, NULL, NULL);
 
       uint8_t *src[]  = { im->plane[0], im->plane[1], im->plane[2], 0 };
-      int srcStride[] = { im->stride[0], im->stride[1], im->stride[2], 0 };
+      int srcStride[] = { int(im->stride[0]), int(im->stride[1]), int(im->stride[2]), 0 };
       uint8_t *dst[]  = { m_rgbBuffer, 0, 0, 0 };
-      int dstStride[] = { m_sourceWidth*4, 0, 0, 0 };
+      int dstStride[] = { int(m_sourceWidth*4), 0, 0, 0 };
       sws_scale(m_sw_context, src, srcStride, 0, im->height, dst, dstStride);
     }
   }
@@ -2506,6 +2506,28 @@ bool CLinuxRendererGLES::CreateSurfaceTexture(int index)
   return true;
 }
 
+//********************************************************************************************************
+// SurfaceTexture creation, deletion, copying + clearing
+//********************************************************************************************************
+void CLinuxRendererGLES::UploadOpenMaxTexture(int index)
+{
+}
+
+void CLinuxRendererGLES::DeleteOpenMaxTexture(int index)
+{
+  if (m_buffers[index].openMaxBufferHolder) {
+    m_buffers[index].openMaxBufferHolder->Release();
+    m_buffers[index].openMaxBufferHolder = 0;
+  }
+}
+
+bool CLinuxRendererGLES::CreateOpenMaxTexture(int index)
+{
+  m_buffers[index].openMaxBufferHolder = 0;
+  return true;
+}
+
+
 void CLinuxRendererGLES::SetTextureFilter(GLenum method)
 {
   for (int i = 0 ; i<m_NumYV12Buffers ; i++)
@@ -2702,7 +2724,13 @@ unsigned int CLinuxRendererGLES::GetProcessorSize()
 void CLinuxRendererGLES::AddProcessor(COpenMax* openMax, DVDVideoPicture *picture, int index)
 {
   YUVBUFFER &buf = m_buffers[index];
-  buf.openMaxBuffer = picture->openMaxBuffer;
+  if (buf.openMaxBufferHolder) {
+    buf.openMaxBufferHolder->Release();
+  }
+  buf.openMaxBufferHolder = picture->openMaxBufferHolder;
+  if (buf.openMaxBufferHolder) {
+    buf.openMaxBufferHolder->Acquire();
+  }
 }
 #endif
 #ifdef HAVE_VIDEOTOOLBOXDECODER
