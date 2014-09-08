@@ -66,6 +66,7 @@ struct OpenMaxVideoBuffer : public IDVDResourceCounted<OpenMaxVideoBuffer> {
   GLuint texture_id;
 
   EGLSyncKHR eglSync;
+  EGLDisplay eglDisplay;
 
   bool done;
   void PassBackToRenderer();

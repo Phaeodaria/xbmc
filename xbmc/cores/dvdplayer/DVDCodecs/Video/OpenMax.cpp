@@ -215,6 +215,7 @@ OMX_ERRORTYPE COpenMax::SetStateForComponent(OMX_STATETYPE state)
 
 bool COpenMax::Initialize( const CStdString &decoder_name)
 {
+  printf("Initialize: %p\ņ", this);
   OMX_ERRORTYPE omx_err = m_dll->OMX_Init();
   if (omx_err)
   {
@@ -241,6 +242,7 @@ bool COpenMax::Initialize( const CStdString &decoder_name)
 
 void COpenMax::Deinitialize()
 {
+  printf("Deinitialize %p\n", this);
   CLog::Log(LOGERROR,
     "%s::%s - failed to get component port parameter\n", CLASSNAME, __func__);
   m_dll->OMX_FreeHandle(m_omx_decoder);

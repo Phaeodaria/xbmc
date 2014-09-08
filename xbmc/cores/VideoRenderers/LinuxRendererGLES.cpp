@@ -1394,11 +1394,11 @@ void CLinuxRendererGLES::RenderOpenMax(int index, int field)
   glDisable(m_textureTarget);
   VerifyGLState();
 
-  if (buffer) {
-    buffer->eglSync = eglCreateSyncKHR(eglGetCurrentDisplay(), EGL_SYNC_FENCE_KHR, NULL);
-    glFlush();
+  if (buffer->eglSync) {
+    eglDestroySyncKHR(buffer->eglDisplay, buffer->eglSync);
   }
-
+  buffer->eglSync = eglCreateSyncKHR(buffer->eglDisplay, EGL_SYNC_FENCE_KHR, NULL);
+  glFlush(); // flush to ensure the sync later will succeed
 #endif
 }
 

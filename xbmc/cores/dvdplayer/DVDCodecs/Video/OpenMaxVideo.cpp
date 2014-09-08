@@ -422,7 +422,6 @@ void COpenMaxVideo::Reset(void)
 
 bool COpenMaxVideo::ClearPicture(DVDVideoPicture* pDvdVideoPicture)
 {
-  //printf("Clear: %p\n", pDvdVideoPicture);
   if (pDvdVideoPicture->openMaxBufferHolder) {
     pDvdVideoPicture->openMaxBufferHolder->Release();
     pDvdVideoPicture->openMaxBufferHolder = 0;
@@ -432,32 +431,30 @@ bool COpenMaxVideo::ClearPicture(DVDVideoPicture* pDvdVideoPicture)
 
 void COpenMaxVideo::ReleaseBuffer(OpenMaxVideoBuffer* releaseBuffer)
 {
-    if (!releaseBuffer)
-      return;
+  if (!releaseBuffer)
+    return;
 
-    // TODO this is NOT multithreading safe. Buffer lifetime managment needs to be adopted.
+  // TODO this is NOT multithreading safe. Buffer lifetime managment needs to be adopted.
+  
+  pthread_mutex_lock(&m_omx_queue_mutex);
+  OpenMaxVideoBuffer *buffer = releaseBuffer;
+  
+  if (buffer->eglSync) {
+    eglClientWaitSyncKHR(m_egl_display, buffer->eglSync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 1*1000*1000*1000);
+    eglDestroySyncKHR(m_egl_display, buffer->eglSync);
+    buffer->eglSync = 0;
+  }
 
-    pthread_mutex_lock(&m_omx_queue_mutex);
-    OpenMaxVideoBuffer *buffer = releaseBuffer;
-
-#if 0
-     printf("Pop:x %d\n", buffer->texture_id);
-#endif
-     bool done = !!(buffer->omx_buffer->nFlags & OMX_BUFFERFLAG_EOS) | buffer->done;
-     if (!done)
-     {
-        if (buffer->eglSync) {
-          eglClientWaitSyncKHR(eglGetCurrentDisplay(), buffer->eglSync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 1*1000*1000*1000);
-          eglDestroySyncKHR(eglGetCurrentDisplay(), buffer->eglSync);
-	  buffer->eglSync = 0;
-        }
-	// return the omx buffer back to OpenMax to fill.
-	
-	OMX_ERRORTYPE omx_err = OMX_FillThisBuffer(m_omx_decoder, buffer->omx_buffer);
-	if (omx_err)
-	  CLog::Log(LOGERROR, "%s::%s - OMX_FillThisBuffer, omx_err(0x%x)\n", CLASSNAME, __func__, omx_err);
-    }
-    pthread_mutex_unlock(&m_omx_queue_mutex);
+  bool done = !!(buffer->omx_buffer->nFlags & OMX_BUFFERFLAG_EOS) | buffer->done;
+  if (!done)
+  {
+    // return the omx buffer back to OpenMax to fill.
+    
+    OMX_ERRORTYPE omx_err = OMX_FillThisBuffer(m_omx_decoder, buffer->omx_buffer);
+    if (omx_err)
+      CLog::Log(LOGERROR, "%s::%s - OMX_FillThisBuffer, omx_err(0x%x)\n", CLASSNAME, __func__, omx_err);
+  }
+  pthread_mutex_unlock(&m_omx_queue_mutex);
 }
 
 int COpenMaxVideo::GetPicture(DVDVideoPicture* pDvdVideoPicture)
@@ -465,6 +462,8 @@ int COpenMaxVideo::GetPicture(DVDVideoPicture* pDvdVideoPicture)
   //printf("Get: %p\n", pDvdVideoPicture);
 
   int returnCode = 0;
+  pDvdVideoPicture->openMaxBufferHolder = 0;
+
   if (!m_omx_output_ready.empty())
   {
     OpenMaxVideoBuffer *buffer;
@@ -488,7 +487,6 @@ int COpenMaxVideo::GetPicture(DVDVideoPicture* pDvdVideoPicture)
       pDvdVideoPicture->format = RENDER_FMT_OMXEGL;
       pDvdVideoPicture->openMax = this;
       pDvdVideoPicture->openMaxBufferHolder = new OpenMaxVideoBufferHolder(buffer);
-      //pDvdVideoPicture->openMaxBuffer->openMaxVideo = this;
       
       if (!m_dts_queue.empty())
 	{
@@ -500,7 +498,6 @@ int COpenMaxVideo::GetPicture(DVDVideoPicture* pDvdVideoPicture)
 
       returnCode |= VC_PICTURE;
     }
-
   }
   else
   {
@@ -508,7 +505,6 @@ int COpenMaxVideo::GetPicture(DVDVideoPicture* pDvdVideoPicture)
     CLog::Log(LOGDEBUG, "%s::%s - called but m_omx_output_ready is empty\n",
       CLASSNAME, __func__);
   #endif
-    pDvdVideoPicture->openMaxBufferHolder = 0;
   }
 
   pDvdVideoPicture->iFlags  = DVP_FLAG_ALLOCATED;
@@ -733,7 +729,7 @@ void OpenMaxDeleteTextures(void *userdata)
 
   for (std::vector<DeleteInfo::Image>::iterator it = deleteInfo->images.begin();it != deleteInfo->images.end();++it) {
 
-    printf("sync, image, texture: %p %p %d\n", it->egl_sync, it->egl_image, it->texture_id);
+    printf("sync, image, texture: %p %p %d %p %p\n", it->egl_sync, it->egl_image, it->texture_id, eglDisplay, eglContext);
 
     if (it->egl_sync) {
       eglClientWaitSyncKHR(eglDisplay, it->egl_sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 1*1000*1000*1000);
@@ -792,8 +788,6 @@ OMX_ERRORTYPE COpenMaxVideo::FreeOMXOutputBuffers(bool wait)
   }
   m_omx_output_buffers.clear();
 
- 
-
   return omx_err;
 }
 
@@ -835,6 +829,7 @@ OMX_ERRORTYPE COpenMaxVideo::AllocOMXOutputEGLTextures(void)
     egl_buffer->width  = m_decoded_width;
     egl_buffer->height = m_decoded_height;
     egl_buffer->done = false;
+    egl_buffer->eglDisplay = m_egl_display;
 
     glGenTextures(1, &egl_buffer->texture_id);
     glBindTexture(GL_TEXTURE_2D, egl_buffer->texture_id);
@@ -1283,18 +1278,20 @@ void OpenMaxVideoBuffer::ReleaseTexture()
 
   if ( g_application.IsCurrentThread() )
   {
+    printf("Release Same Thread");
     OpenMaxDeleteTextures(deleteInfo);
   }
   else
   {
+    printf("Release other thread");
     // TODO put the callbackData pointer into userptr so that it can be delete afterwards
     ThreadMessageCallback* callbackData = new ThreadMessageCallback;
     callbackData->callback = &OpenMaxDeleteTextures;
     callbackData->userptr = (void *)deleteInfo;
 
-    ThreadMessage tMsg;    
-    callbackData->callback = &OpenMaxDeleteTextures;
-    callbackData->userptr = (void *)deleteInfo;
+    ThreadMessage tMsg;
+    tMsg.dwMessage = TMSG_CALLBACK;
+    tMsg.lpVoid = (void*)callbackData;
 
     // HACK, this should be synchronous, but it's not possible since Stop blocks the GUI thread.
     CApplicationMessenger::Get().SendMessage(tMsg, false);
